@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, redirect, Response
 import requests
 from bs4 import BeautifulSoup
 import re
@@ -262,11 +262,15 @@ def home():
         "routes": {
             "GET /radios": "Liste toutes les radios de Madagascar",
             "GET /radios?q=QUERY": "Recherche des radios par nom",
-            "GET /recherche?radio=NOM": "Recherche une radio et retourne nom, image_url, url_stream"
+            "GET /recherche?radio=NOM": "Recherche une radio et retourne nom, image_url, url_stream",
+            "GET /stream/<nom>.mp3": "Redirige vers le stream audio (pour lecteurs MP3)",
+            "GET /play/<nom>": "Lecteur audio HTML5 dans le navigateur"
         },
         "exemples": [
             "/recherche?radio=rdj",
             "/recherche?radio=don bosco",
+            "/stream/don%20bosco.mp3",
+            "/play/don%20bosco",
             "/radios?q=rna"
         ]
     })
@@ -295,6 +299,46 @@ def recherche():
         return jsonify(result)
     else:
         return jsonify({"error": f"Radio '{radio_query}' non trouvée"}), 404
+
+
+@app.route("/stream/<radio_name>.mp3")
+def stream_mp3(radio_name):
+    result = search_radio(radio_name)
+    
+    if result and result.get("url_stream"):
+        return redirect(result["url_stream"])
+    else:
+        return jsonify({"error": f"Radio '{radio_name}' non trouvée"}), 404
+
+
+@app.route("/play/<radio_name>")
+def play_radio(radio_name):
+    result = search_radio(radio_name)
+    
+    if result and result.get("url_stream"):
+        html = f'''<!DOCTYPE html>
+<html>
+<head>
+    <title>{result.get("nom", radio_name)} - Radio Player</title>
+    <style>
+        body {{ display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; background: #1a1a1a; color: white; font-family: Arial, sans-serif; margin: 0; }}
+        img {{ width: 150px; height: 150px; border-radius: 10px; margin-bottom: 20px; object-fit: cover; }}
+        h1 {{ margin-bottom: 20px; }}
+        audio {{ width: 80%; max-width: 400px; }}
+    </style>
+</head>
+<body>
+    <img src="{result.get("image_url", "")}" alt="{result.get("nom", "")}">
+    <h1>{result.get("nom", radio_name)}</h1>
+    <audio controls autoplay>
+        <source src="{result["url_stream"]}" type="audio/mpeg">
+        Votre navigateur ne supporte pas l'audio HTML5.
+    </audio>
+</body>
+</html>'''
+        return Response(html, mimetype='text/html')
+    else:
+        return jsonify({"error": f"Radio '{radio_name}' non trouvée"}), 404
 
 
 if __name__ == "__main__":
