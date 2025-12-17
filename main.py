@@ -263,12 +263,14 @@ def home():
             "GET /radios": "Liste toutes les radios de Madagascar",
             "GET /radios?q=QUERY": "Recherche des radios par nom",
             "GET /recherche?radio=NOM": "Recherche une radio et retourne nom, image_url, url_stream",
-            "GET /stream/<nom>.mp3": "Redirige vers le stream audio (pour lecteurs MP3)",
+            "GET /stream/<nom>": "Redirige vers le stream audio (format Zeno.fm)",
+            "GET /stream/<nom>.mp3": "Redirige vers le stream audio (avec extension .mp3)",
             "GET /play/<nom>": "Lecteur audio HTML5 dans le navigateur"
         },
         "exemples": [
             "/recherche?radio=rdj",
             "/recherche?radio=don bosco",
+            "/stream/donbosco",
             "/stream/don%20bosco.mp3",
             "/play/don%20bosco",
             "/radios?q=rna"
@@ -303,6 +305,16 @@ def recherche():
 
 @app.route("/stream/<radio_name>.mp3")
 def stream_mp3(radio_name):
+    result = search_radio(radio_name)
+    
+    if result and result.get("url_stream"):
+        return redirect(result["url_stream"])
+    else:
+        return jsonify({"error": f"Radio '{radio_name}' non trouvée"}), 404
+
+
+@app.route("/stream/<radio_name>")
+def stream_radio(radio_name):
     result = search_radio(radio_name)
     
     if result and result.get("url_stream"):
