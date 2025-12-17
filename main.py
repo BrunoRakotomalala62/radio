@@ -91,6 +91,26 @@ def search_mytuner(query):
     return radios
 
 
+def format_stream_url(url):
+    if not url:
+        return ""
+    
+    url = url.strip()
+    
+    if url.endswith("/;"):
+        url = url[:-1]
+    
+    if url.endswith(";"):
+        pass
+    elif url.endswith("/"):
+        url = url + "stream"
+    elif not any(url.endswith(ext) for ext in [".mp3", ".aac", ".ogg", ".m3u", ".pls", ".m3u8"]):
+        if ":" in url.split("/")[-1] or url.count("/") <= 3:
+            url = url.rstrip("/") + "/stream"
+    
+    return url
+
+
 def get_stream_from_radio_browser(radio_name):
     try:
         api_url = f"{RADIO_BROWSER_API}/byname/{requests.utils.quote(radio_name)}"
@@ -109,12 +129,13 @@ def get_stream_from_radio_browser(radio_name):
                     if station.get("lastcheckok") == 1:
                         url = station.get("url_resolved") or station.get("url", "")
                         if url:
-                            return url, station.get("name", radio_name), station.get("favicon", "")
+                            return format_stream_url(url), station.get("name", radio_name), station.get("favicon", "")
                     if not best_match:
                         best_match = station
             
             if best_match:
-                return (best_match.get("url_resolved") or best_match.get("url", ""),
+                url = best_match.get("url_resolved") or best_match.get("url", "")
+                return (format_stream_url(url),
                         best_match.get("name", radio_name),
                         best_match.get("favicon", ""))
         
