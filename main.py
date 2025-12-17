@@ -19,13 +19,6 @@ def format_stream_url(url):
     
     url = url.strip()
     
-    if url.endswith("/;"):
-        url = url[:-1] + "stream.mp3"
-    elif url.endswith(";"):
-        url = url[:-1] + "/stream.mp3"
-    elif re.search(r':\d+/?$', url):
-        url = url.rstrip("/") + "/stream.mp3"
-    
     return url
 
 
