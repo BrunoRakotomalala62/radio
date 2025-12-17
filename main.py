@@ -5,7 +5,7 @@ import re
 
 app = Flask(__name__)
 
-BASE_URL = "https://mytuner-radio.com/fr/"
+BASE_URL = "https://mytuner-radio.com/fr/radio/pays/madagascar-stations"
 RADIO_BROWSER_API = "https://de1.api.radio-browser.info/json/stations"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
