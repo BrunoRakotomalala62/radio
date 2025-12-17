@@ -12,6 +12,22 @@ HEADERS = {
 }
 
 
+def format_stream_url(url):
+    if not url:
+        return ""
+    
+    url = url.strip()
+    
+    if url.endswith("/;"):
+        url = url[:-1] + "stream.mp3"
+    elif url.endswith(";"):
+        url = url[:-1] + "/stream.mp3"
+    elif re.search(r':\d+/?$', url):
+        url = url.rstrip("/") + "/stream.mp3"
+    
+    return url
+
+
 def get_radio_info(radio_id, country="mg"):
     try:
         url = f"{BASE_URL}/{country}/{radio_id}/player/?played=1&cs={country}.{radio_id}&os=android"
@@ -22,7 +38,7 @@ def get_radio_info(radio_id, country="mg"):
         button = soup.select_one("button#set_radio_button")
         
         if button:
-            stream_url = button.get("stream", "")
+            stream_url = format_stream_url(button.get("stream", ""))
             radio_name = button.get("radioname", "")
             radio_img = button.get("radioimg", "")
             
