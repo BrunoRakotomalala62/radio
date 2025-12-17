@@ -9,3 +9,7 @@ requests
 beautifulsoup4
 flask
 requests
+beautifulsoup4
+flask
+lxml
+requests
