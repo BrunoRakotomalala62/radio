@@ -5,173 +5,79 @@ import re
 
 app = Flask(__name__)
 
-BASE_URL = "https://mytuner-radio.com/fr/radio/pays/madagascar-stations"
-RADIO_BROWSER_API = "https://de1.api.radio-browser.info/json/stations"
+BASE_URL = "http://p.onlineradiobox.com"
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Linux; Android 10; SM-G975F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 }
+
+RADIOS_MADAGASCAR = [
+    {"id": "rdj", "country": "mg"},
+    {"id": "rnm", "country": "mg"},
+    {"id": "rta", "country": "mg"},
+    {"id": "viva", "country": "mg"},
+    {"id": "mbs", "country": "mg"},
+    {"id": "tvm", "country": "mg"},
+    {"id": "antsiva", "country": "mg"},
+    {"id": "lazan", "country": "mg"},
+    {"id": "fm-plus", "country": "mg"},
+    {"id": "radiodon", "country": "mg"},
+]
+
+
+def get_radio_info(radio_id, country="mg"):
+    try:
+        url = f"{BASE_URL}/{country}/{radio_id}/player/?played=1&cs={country}.{radio_id}&os=android"
+        response = requests.get(url, headers=HEADERS, timeout=15)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "lxml")
+        
+        button = soup.select_one("button#set_radio_button")
+        
+        if button:
+            stream_url = button.get("stream", "")
+            radio_name = button.get("radioname", "")
+            radio_img = button.get("radioimg", "")
+            
+            if radio_img and radio_img.startswith("//"):
+                radio_img = "https:" + radio_img
+            
+            return {
+                "nom": radio_name,
+                "image_url": radio_img,
+                "url_stream": stream_url,
+                "radio_id": radio_id
+            }
+        
+    except Exception as e:
+        print(f"Erreur lors du scraping de {radio_id}: {e}")
+    
+    return None
 
 
 def get_all_radios():
     radios = []
-    try:
-        response = requests.get(BASE_URL, headers=HEADERS, timeout=15)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, "lxml")
-        
-        radio_list = soup.select("div.radio-list ul li a")
-        
-        for item in radio_list:
-            href = item.get("href", "")
-            img_tag = item.select_one("img")
-            
-            nom = ""
-            image_url = ""
-            
-            if img_tag:
-                nom = img_tag.get("alt", "").strip()
-                image_url = img_tag.get("data-src") or img_tag.get("src", "")
-            
-            if not nom:
-                text_content = item.get_text(strip=True)
-                if text_content:
-                    nom = text_content
-            
-            if nom and not nom.startswith("http"):
-                radio_url = href if href.startswith("http") else "https://mytuner-radio.com" + href
-                radios.append({
-                    "nom": nom,
-                    "image_url": image_url,
-                    "url_page": radio_url
-                })
-        
-    except Exception as e:
-        print(f"Erreur lors du scraping: {e}")
-    
+    for radio in RADIOS_MADAGASCAR:
+        info = get_radio_info(radio["id"], radio["country"])
+        if info:
+            radios.append({
+                "nom": info["nom"],
+                "image_url": info["image_url"]
+            })
     return radios
-
-
-def search_mytuner(query):
-    radios = []
-    try:
-        search_url = f"https://mytuner-radio.com/fr/cherche/?q={query}"
-        response = requests.get(search_url, headers=HEADERS, timeout=15)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, "lxml")
-        
-        radio_list = soup.select("div.radio-list ul li a")
-        
-        for item in radio_list:
-            href = item.get("href", "")
-            img_tag = item.select_one("img")
-            
-            nom = ""
-            image_url = ""
-            
-            if img_tag:
-                nom = img_tag.get("alt", "").strip()
-                image_url = img_tag.get("data-src") or img_tag.get("src", "")
-            
-            if not nom:
-                text_content = item.get_text(strip=True)
-                if text_content:
-                    nom = text_content
-            
-            if nom and not nom.startswith("http"):
-                radio_url = href if href.startswith("http") else "https://mytuner-radio.com" + href
-                radios.append({
-                    "nom": nom,
-                    "image_url": image_url,
-                    "url_page": radio_url
-                })
-        
-    except Exception as e:
-        print(f"Erreur recherche mytuner: {e}")
-    
-    return radios
-
-
-def format_stream_url(url):
-    if not url:
-        return ""
-    
-    url = url.strip()
-    
-    if url.endswith("/;"):
-        url = url[:-1] + ";"
-    elif url.endswith(";"):
-        pass
-    elif any(url.endswith(ext) for ext in [".mp3", ".aac", ".ogg", ".m3u8"]):
-        pass
-    elif re.search(r':\d+/?$', url):
-        url = url.rstrip("/") + "/;"
-    
-    return url
-
-
-def get_stream_from_radio_browser(radio_name):
-    try:
-        api_url = f"{RADIO_BROWSER_API}/byname/{requests.utils.quote(radio_name)}"
-        
-        response = requests.get(api_url, headers=HEADERS, timeout=10)
-        response.raise_for_status()
-        
-        stations = response.json()
-        
-        if stations:
-            query_lower = radio_name.lower()
-            best_match = None
-            for station in stations:
-                station_name = station.get("name", "").lower()
-                if station_name == query_lower or query_lower in station_name:
-                    if station.get("lastcheckok") == 1:
-                        url = station.get("url_resolved") or station.get("url", "")
-                        if url:
-                            return format_stream_url(url), station.get("name", radio_name), station.get("favicon", "")
-                    if not best_match:
-                        best_match = station
-            
-            if best_match:
-                url = best_match.get("url_resolved") or best_match.get("url", "")
-                return (format_stream_url(url),
-                        best_match.get("name", radio_name),
-                        best_match.get("favicon", ""))
-        
-    except Exception as e:
-        print(f"Erreur API radio-browser: {e}")
-    
-    return "", "", ""
 
 
 def search_radio(query):
-    mytuner_results = search_mytuner(query)
-    query_lower = query.lower()
+    query_lower = query.lower().strip()
     
-    best_match = None
-    for radio in mytuner_results:
-        if query_lower in radio["nom"].lower():
-            best_match = radio
-            break
+    for radio in RADIOS_MADAGASCAR:
+        if query_lower in radio["id"].lower():
+            info = get_radio_info(radio["id"], radio["country"])
+            if info:
+                return info
     
-    if not best_match and mytuner_results:
-        best_match = mytuner_results[0]
-    
-    if best_match:
-        stream_url, _, _ = get_stream_from_radio_browser(best_match["nom"])
-        
-        return {
-            "nom": best_match["nom"],
-            "image_url": best_match["image_url"],
-            "url_stream": stream_url
-        }
-    
-    stream_url, name, favicon = get_stream_from_radio_browser(query)
-    if stream_url:
-        return {
-            "nom": name or query,
-            "image_url": favicon,
-            "url_stream": stream_url
-        }
+    info = get_radio_info(query_lower, "mg")
+    if info and info["nom"]:
+        return info
     
     return None
 
@@ -179,21 +85,21 @@ def search_radio(query):
 @app.route("/")
 def home():
     return jsonify({
-        "message": "API Radio Scraper - myTuner Radio",
+        "message": "API Radio Scraper - OnlineRadioBox Madagascar",
         "routes": {
             "GET /radios": "Liste toutes les radios (nom, image_url)",
             "GET /recherche?radio=NOM": "Recherche une radio et retourne nom, image_url, url_stream"
-        }
+        },
+        "exemple": "/recherche?radio=rdj"
     })
 
 
 @app.route("/radios")
 def list_radios():
     radios = get_all_radios()
-    result = [{"nom": r["nom"], "image_url": r["image_url"]} for r in radios]
     return jsonify({
-        "count": len(result),
-        "radios": result
+        "count": len(radios),
+        "radios": radios
     })
 
 
@@ -202,7 +108,7 @@ def recherche():
     radio_query = request.args.get("radio", "")
     
     if not radio_query:
-        return jsonify({"error": "Paramètre 'radio' requis. Ex: /recherche?radio=RFI"}), 400
+        return jsonify({"error": "Paramètre 'radio' requis. Ex: /recherche?radio=rdj"}), 400
     
     result = search_radio(radio_query)
     
