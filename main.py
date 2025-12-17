@@ -98,15 +98,13 @@ def format_stream_url(url):
     url = url.strip()
     
     if url.endswith("/;"):
-        url = url[:-1]
-    
-    if url.endswith(";"):
+        url = url[:-1] + ";"
+    elif url.endswith(";"):
         pass
-    elif url.endswith("/"):
-        url = url + "stream"
-    elif not any(url.endswith(ext) for ext in [".mp3", ".aac", ".ogg", ".m3u", ".pls", ".m3u8"]):
-        if ":" in url.split("/")[-1] or url.count("/") <= 3:
-            url = url.rstrip("/") + "/stream"
+    elif any(url.endswith(ext) for ext in [".mp3", ".aac", ".ogg", ".m3u8"]):
+        pass
+    elif re.search(r':\d+/?$', url):
+        url = url.rstrip("/") + "/;"
     
     return url
 
