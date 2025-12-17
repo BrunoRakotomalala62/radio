@@ -7,6 +7,7 @@ app = Flask(__name__)
 
 BASE_URL = "http://p.onlineradiobox.com"
 SEARCH_URL = "https://onlineradiobox.com/search"
+RADIO_BROWSER_API = "https://de1.api.radio-browser.info/json/stations"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Linux; Android 10; SM-G975F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 }
@@ -26,6 +27,10 @@ def format_stream_url(url):
         url = url.rstrip("/") + "/stream.mp3"
     
     return url
+
+
+def normalize_name(name):
+    return re.sub(r'[^a-z0-9]', '', name.lower())
 
 
 def get_radio_info(radio_id, country="mg"):
@@ -49,11 +54,74 @@ def get_radio_info(radio_id, country="mg"):
                 "nom": radio_name,
                 "image_url": radio_img,
                 "url_stream": stream_url,
-                "radio_id": radio_id
+                "radio_id": radio_id,
+                "source": "onlineradiobox"
             }
         
     except Exception as e:
         print(f"Erreur lors du scraping de {radio_id}: {e}")
+    
+    return None
+
+
+def fetch_from_radio_browser(country_code="MG"):
+    radios = []
+    try:
+        url = f"{RADIO_BROWSER_API}/bycountrycodeexact/{country_code}"
+        response = requests.get(url, headers=HEADERS, timeout=15)
+        response.raise_for_status()
+        stations = response.json()
+        
+        for station in stations:
+            if station.get("lastcheckok") == 1:
+                stream_url = format_stream_url(station.get("url_resolved") or station.get("url", ""))
+                favicon = station.get("favicon", "")
+                
+                radios.append({
+                    "nom": station.get("name", ""),
+                    "image_url": favicon,
+                    "url_stream": stream_url,
+                    "radio_id": station.get("stationuuid", ""),
+                    "source": "radio-browser"
+                })
+        
+    except Exception as e:
+        print(f"Erreur radio-browser: {e}")
+    
+    return radios
+
+
+def search_radio_browser(query):
+    try:
+        url = f"{RADIO_BROWSER_API}/byname/{requests.utils.quote(query)}"
+        response = requests.get(url, headers=HEADERS, timeout=15)
+        response.raise_for_status()
+        stations = response.json()
+        
+        for station in stations:
+            if station.get("countrycode") == "MG" and station.get("lastcheckok") == 1:
+                stream_url = format_stream_url(station.get("url_resolved") or station.get("url", ""))
+                return {
+                    "nom": station.get("name", ""),
+                    "image_url": station.get("favicon", ""),
+                    "url_stream": stream_url,
+                    "radio_id": station.get("stationuuid", ""),
+                    "source": "radio-browser"
+                }
+        
+        for station in stations:
+            if station.get("lastcheckok") == 1:
+                stream_url = format_stream_url(station.get("url_resolved") or station.get("url", ""))
+                return {
+                    "nom": station.get("name", ""),
+                    "image_url": station.get("favicon", ""),
+                    "url_stream": stream_url,
+                    "radio_id": station.get("stationuuid", ""),
+                    "source": "radio-browser"
+                }
+        
+    except Exception as e:
+        print(f"Erreur recherche radio-browser: {e}")
     
     return None
 
@@ -91,7 +159,8 @@ def search_radios_online(query, country="mg"):
                         "nom": name,
                         "image_url": image_url,
                         "radio_id": station_id,
-                        "country": station_country
+                        "country": station_country,
+                        "source": "onlineradiobox"
                     })
         
     except Exception as e:
@@ -113,11 +182,17 @@ def search_radio(query, country="mg"):
     if info and info["nom"]:
         return info
     
+    result = search_radio_browser(query)
+    if result:
+        return result
+    
     return None
 
 
 def fetch_all_radios_from_country(country="mg"):
     radios = []
+    existing_names = set()
+    
     try:
         url = f"https://onlineradiobox.com/{country}/"
         response = requests.get(url, headers=HEADERS, timeout=15)
@@ -147,15 +222,34 @@ def fetch_all_radios_from_country(country="mg"):
                         if image_url.startswith("//"):
                             image_url = "https:" + image_url
                     
-                    radios.append({
-                        "nom": name,
-                        "image_url": image_url,
-                        "radio_id": station_id,
-                        "country": country
-                    })
+                    normalized = normalize_name(name)
+                    if normalized and normalized not in existing_names:
+                        existing_names.add(normalized)
+                        radios.append({
+                            "nom": name,
+                            "image_url": image_url,
+                            "radio_id": station_id,
+                            "country": country,
+                            "source": "onlineradiobox"
+                        })
         
     except Exception as e:
-        print(f"Erreur fetch radios: {e}")
+        print(f"Erreur fetch radios onlineradiobox: {e}")
+    
+    country_code = country.upper()
+    radio_browser_radios = fetch_from_radio_browser(country_code)
+    
+    for radio in radio_browser_radios:
+        normalized = normalize_name(radio["nom"])
+        if normalized and normalized not in existing_names:
+            existing_names.add(normalized)
+            radios.append({
+                "nom": radio["nom"],
+                "image_url": radio["image_url"],
+                "radio_id": radio["radio_id"],
+                "country": country,
+                "source": radio["source"]
+            })
     
     return radios
 
@@ -170,15 +264,16 @@ def get_all_radios(query="", country="mg"):
 @app.route("/")
 def home():
     return jsonify({
-        "message": "API Radio Scraper - OnlineRadioBox",
+        "message": "API Radio Scraper - Madagascar",
+        "sources": ["OnlineRadioBox", "Radio-Browser.info"],
         "routes": {
-            "GET /radios": "Liste des radios populaires",
+            "GET /radios": "Liste toutes les radios de Madagascar",
             "GET /radios?q=QUERY": "Recherche des radios par nom",
             "GET /recherche?radio=NOM": "Recherche une radio et retourne nom, image_url, url_stream"
         },
         "exemples": [
             "/recherche?radio=rdj",
-            "/recherche?radio=rna",
+            "/recherche?radio=don bosco",
             "/radios?q=rna"
         ]
     })
@@ -199,7 +294,7 @@ def recherche():
     radio_query = request.args.get("radio", "")
     
     if not radio_query:
-        return jsonify({"error": "Paramètre 'radio' requis. Ex: /recherche?radio=rna"}), 400
+        return jsonify({"error": "Paramètre 'radio' requis. Ex: /recherche?radio=don bosco"}), 400
     
     result = search_radio(radio_query)
     
