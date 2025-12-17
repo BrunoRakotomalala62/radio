@@ -116,21 +116,55 @@ def search_radio(query, country="mg"):
     return None
 
 
+def fetch_all_radios_from_country(country="mg"):
+    radios = []
+    try:
+        url = f"https://onlineradiobox.com/{country}/"
+        response = requests.get(url, headers=HEADERS, timeout=15)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "lxml")
+        
+        stations = soup.select("li.stations__station")
+        
+        for station in stations:
+            link = station.select_one("a.ajax")
+            if link:
+                href = link.get("href", "")
+                match = re.match(rf"^/{country}/([^/]+)/?$", href)
+                if match:
+                    station_id = match.group(1)
+                    
+                    if station_id.startswith("genre/"):
+                        continue
+                    
+                    img = station.select_one("img.station__title__logo")
+                    name_tag = station.select_one("figcaption.station__title__name")
+                    
+                    name = name_tag.get_text(strip=True) if name_tag else ""
+                    image_url = ""
+                    if img:
+                        image_url = img.get("src", "")
+                        if image_url.startswith("//"):
+                            image_url = "https:" + image_url
+                    
+                    radios.append({
+                        "nom": name,
+                        "image_url": image_url,
+                        "radio_id": station_id,
+                        "country": country
+                    })
+        
+    except Exception as e:
+        print(f"Erreur fetch radios: {e}")
+    
+    return radios
+
+
 def get_all_radios(query="", country="mg"):
     if query:
         return search_radios_online(query, country)
     
-    common_radios = ["rdj", "rnm", "viva", "mbs", "antsiva"]
-    radios = []
-    for radio_id in common_radios:
-        info = get_radio_info(radio_id, country)
-        if info:
-            radios.append({
-                "nom": info["nom"],
-                "image_url": info["image_url"],
-                "radio_id": radio_id
-            })
-    return radios
+    return fetch_all_radios_from_country(country)
 
 
 @app.route("/")
